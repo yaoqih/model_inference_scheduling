@@ -1,134 +1,195 @@
 # Model Inference Scheduling Platform
 
-一个用于管理AI模型推理节点和调度的管理平台。
+AI 模型推理的统一管理与调度平台，支持多环境、多节点的资源编排、队列监控与自动化调度。
 
-## 项目概述
+- 交接文档：请阅读 docs/Handover.zh-CN.md（本 README 提供快速上手与总览，交接细节与运维规范见交接文档）
 
-这是一个模型推理调度管理平台，用于统一管理多个环境下的GPU节点和AI模型，提供可视化的监控和控制界面。
+## 功能概览
 
-### 主要功能
+- 多环境管理：开发/测试/生产隔离
+- 模型配置中心：按模型维护 RabbitMQ 队列与性能指标（平均推理时长）
+- 节点与GPU管理：节点注册、心跳、GPU能力与已部署实例查看
+- 队列监控：定时抓取 RabbitMQ 队列长度并持久化历史
+- 自动化调度：基于队列压力与最近活跃度，自动部署/替换模型实例
+- 可视化前端：仪表盘、环境/模型/节点、部署与调度页
 
-- **多环境管理**: 支持开发/测试/生产环境隔离
-- **模型配置管理**: 每个模型独立配置RabbitMQ连接信息
-- **节点资源管理**: GPU节点注册和心跳检测，实时GPU使用率监控
-- **实时监控**: WebSocket实时数据推送，GPU资源使用可视化
-- **远程模型控制**: 通过管理界面启动/停止模型
+## 架构与代码路径
 
-## 技术栈
+- 后端（FastAPI + SQLAlchemy）：
+  - 应用入口与中间件：[`backend/app/main.py`](backend/app/main.py)
+  - 配置：[`backend/app/config.py`](backend/app/config.py)
+  - 数据层与会话：[`backend/app/database.py`](backend/app/database.py)
+  - 路由聚合：[`backend/app/api/v1/api.py`](backend/app/api/v1/api.py)
+  - 定时调度器：[`backend/app/scheduler.py`](backend/app/scheduler.py)
+  - 定时任务：[`backend/app/jobs/node_jobs.py`](backend/app/jobs/node_jobs.py), [`backend/app/jobs/queue_jobs.py`](backend/app/jobs/queue_jobs.py), [`backend/app/jobs/scheduling_jobs.py`](backend/app/jobs/scheduling_jobs.py)
+  - 业务模型：[`backend/app/models/`](backend/app/models/)
+  - 数据校验：[`backend/app/schemas/`](backend/app/schemas/)
+  - 节点客户端：[`backend/app/services/node_client.py`](backend/app/services/node_client.py)
 
-### 后端
-- **FastAPI**: 现代、高性能的Python Web框架
-- **SQLAlchemy**: ORM框架
-- **SQLite**: 轻量级数据库
-- **Pydantic**: 数据验证
-- **httpx**: 异步HTTP客户端
+- 前端（React + TypeScript + Ant Design）：
+  - 入口与路由：[`frontend/src/App.tsx`](frontend/src/App.tsx)
+  - 主布局：[`frontend/src/components/Layout/MainLayout.tsx`](frontend/src/components/Layout/MainLayout.tsx)
+  - 页面：[`frontend/src/pages/`](frontend/src/pages/)（Dashboard/Environments/Models/Nodes/Deployments/Scheduling）
+  - API 服务层：[`frontend/src/services/api.ts`](frontend/src/services/api.ts)
+  - 前端环境：[`frontend/.env`](frontend/.env)
 
-### 前端
-- **React 18**: 现代前端框架
-- **TypeScript**: 类型安全
-- **Ant Design**: UI组件库
+- 开发脚本：
+  - 一键后端开发：[`run_dev.py`](run_dev.py)
 
 ## 快速开始
 
-### 环境要求
+### 1) 后端
 
-- Python 3.8+
-- Node.js 16+ (前端开发)
+环境要求：Python 3.8+
 
-### 安装依赖
-
+安装依赖
 ```bash
-# 安装Python依赖
 pip install -r requirements.txt
 ```
 
-### 运行后端服务
-
+运行
 ```bash
-# 方式1: 使用开发脚本
+# 方式1：开发脚本（自动加载 backend 包）
 python run_dev.py
 
-# 方式2: 直接使用uvicorn
+# 方式2：手动运行 uvicorn
 cd backend
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 访问服务
-
-- API文档: http://localhost:8000/docs
+访问
+- OpenAPI 文档: http://localhost:8000/docs
 - 健康检查: http://localhost:8000/health
 
-## 项目结构
+### 2) 前端
 
-```
-model_inference_scheduling/
-├── backend/                    # 后端代码
-│   └── app/
-│       ├── main.py            # FastAPI应用入口
-│       ├── config.py          # 配置管理
-│       ├── database.py        # 数据库连接
-│       ├── models/            # SQLAlchemy数据模型
-│       └── schemas/           # Pydantic数据验证模型
-├── frontend/                  # 前端代码(待开发)
-├── requirements.txt           # Python依赖
-├── run_dev.py                # 开发环境启动脚本
-└── README.md                 # 项目说明
+环境要求：Node.js 16+
+
+```bash
+cd frontend
+npm install
+npm start
+# 默认开发端口 http://localhost:3000
 ```
 
-## 数据库设计
+跨域：后端允许的 CORS 源在 [`backend/app/config.py`](backend/app/config.py) 中配置，默认允许 http://localhost:3000。
 
-### 核心表结构
+### 3) 可选：环境变量（.env）
 
-- **environments**: 环境配置表（用于资源隔离）
-- **models**: 模型配置表（包含独立的RabbitMQ配置）
-- **nodes**: 节点信息表（GPU节点管理）
-- **model_instances**: 模型实例状态表（运行时状态）
+在项目根目录或运行环境中设置（见 [`backend/app/config.py`](backend/app/config.py)）：
+```
+DATABASE_URL=sqlite:///./model_scheduling.db
+CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
+API_V1_STR=/api/v1
+PROJECT_NAME=Model Inference Scheduling Platform
+LOG_LEVEL=INFO
+ENABLE_SCHEDULER=true
+NODE_STATUS_REFRESH_INTERVAL=30
+QUEUE_HISTORY_MAX_LENGTH=1000
+```
 
-## API接口
+前端 API 地址可在 [`frontend/.env`](frontend/.env) 中设置（例如 REACT_APP_API_BASE_URL）。
 
-### 基础接口
+## API 总览
 
-- `GET /`: 根路径，返回API信息
-- `GET /health`: 健康检查
-- `GET /docs`: API文档
+基础
+- GET /             根路径信息
+- GET /health       健康检查
+- GET /docs         OpenAPI 文档
 
-### 计划中的接口
+版本前缀：/api/v1（见 [`backend/app/api/v1/api.py`](backend/app/api/v1/api.py)）
 
-- `GET /api/v1/environments`: 获取所有环境
-- `POST /api/v1/environments`: 创建环境
-- `GET /api/v1/models`: 获取所有模型
-- `POST /api/v1/models`: 创建模型配置
-- `GET /api/v1/nodes`: 获取所有节点
-- `POST /api/v1/nodes`: 添加节点
+- environments
+  - GET /environments
+  - POST /environments
+  - GET /environments/{id}
+  - PUT /environments/{id}
+  - DELETE /environments/{id}
 
-## 开发状态
+- models
+  - GET /models?environment_id=
+  - POST /models
+  - GET /models/{id}
+  - PUT /models/{id}
+  - DELETE /models/{id}
+  - GET /models/environment/{environment_id}
 
-### ✅ 已完成
-- [x] 项目架构设计
-- [x] 数据库模型设计
-- [x] Pydantic数据验证模型
-- [x] FastAPI基础框架
-- [x] 项目目录结构
+- nodes
+  - GET /nodes?environment_id=&status=
+  - POST /nodes
+  - GET /nodes/{id}
+  - PUT /nodes/{id}
+  - DELETE /nodes/{id}
+  - POST /nodes/{id}/heartbeat
+  - POST /nodes/{id}/discover_models
+  - GET /nodes/{id}/models
+  - GET /nodes/{id}/status
+  - GET /nodes/{id}/gpu-status
+  - GET /nodes/{id}/model-status
+  - POST /nodes/{id}/models/start
+  - POST /nodes/{id}/models/stop
+  - DELETE /nodes/{id}/processes/{pid}
 
-### 🚧 进行中
-- [ ] API路由实现
-- [ ] 数据库CRUD操作
-- [ ] 节点API客户端
+- queues
+  - GET /queues/{model_id}
+  - GET /queues/{model_id}/history?limit=
 
-### 📋 待开发
-- [ ] 前端React应用
-- [ ] WebSocket实时通信
-- [ ] RabbitMQ队列监控
-- [ ] 部署文档
+- deployments
+  - GET /deployments/status?environment_id=
 
-## 贡献指南
+- scheduling-strategies
+  - GET /scheduling-strategies
 
-1. Fork 项目
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 打开 Pull Request
+更多细节见各路由文件（[`backend/app/api/v1/`](backend/app/api/v1/)）。
 
-## 许可证
+## 定时任务与调度
 
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+- 调度器：APScheduler（见 [`backend/app/scheduler.py`](backend/app/scheduler.py)）
+- 已注册任务：
+  - 刷新节点状态：每 NODE_STATUS_REFRESH_INTERVAL 秒（[`backend/app/jobs/node_jobs.py`](backend/app/jobs/node_jobs.py)）
+  - 记录队列长度：每 60 秒（[`backend/app/jobs/queue_jobs.py`](backend/app/jobs/queue_jobs.py)）
+  - 应用调度策略：每 1 分钟（[`backend/app/jobs/scheduling_jobs.py`](backend/app/jobs/scheduling_jobs.py)）
+
+说明：
+- 队列长度通过 RabbitMQ Management API 获取，需要在模型配置中填入 host/port/vhost/queue/name 与认证信息
+- 调度策略示例 busy_queue_scaling：基于最近平均队列长度、实例运行情况与可用 GPU 动态部署/替换
+
+## 数据库
+
+默认 SQLite（文件位于项目根目录）。核心表：
+- environments
+- models（含 RabbitMQ 配置与 average_inference_time）
+- nodes（含 available_gpu_ids / available_models JSON 字段）
+- model_instances（运行时实例）
+- queue_length_records（周期性队列长度记录）
+- scheduling_strategies（策略启用状态等）
+
+## 前端页面
+
+- Dashboard（仪表盘）
+- Environments（环境管理）
+- Models（模型管理）
+- Nodes（节点管理）
+- Deployments（部署总览）
+- Scheduling（调度与策略）
+
+入口与路由见 [`frontend/src/App.tsx`](frontend/src/App.tsx)，布局见 [`frontend/src/components/Layout/MainLayout.tsx`](frontend/src/components/Layout/MainLayout.tsx)。
+
+## 测试
+
+项目包含若干 API 与客户端示例测试（例如 test_*.py）。建议：
+```bash
+# 安装 pytest（如未在 requirements 中）
+pip install pytest
+
+# 在项目根目录运行
+pytest -q
+```
+
+## 贡献
+
+1. Fork 仓库
+2. 创建分支 `git checkout -b feature/your-feature`
+3. 提交 `git commit -m "feat: your feature"`
+4. 推送并创建 PR
+
